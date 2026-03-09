@@ -1,12 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
-
-const WHITELIST = [
-  "kts123@estsoft.com",
-  "csong2023@gmail.com",
-];
 
 export default function Home() {
   const { data: session, status } = useSession();
@@ -15,12 +10,41 @@ export default function Home() {
   const [audioUrl, setAudioUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isAllowedUser, setIsAllowedUser] = useState(false);
+  const [checkingAccess, setCheckingAccess] = useState(false);
 
   const userEmail = session?.user?.email ?? "";
 
-  const isAllowedUser = useMemo(() => {
-    return WHITELIST.includes(userEmail);
-  }, [userEmail]);
+  useEffect(() => {
+    const checkAccess = async () => {
+      if (!session || !userEmail) {
+        setIsAllowedUser(false);
+        return;
+      }
+
+      try {
+        setCheckingAccess(true);
+
+        const response = await fetch("/api/check-access", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email: userEmail }),
+        });
+
+        const data = await response.json();
+        setIsAllowedUser(Boolean(data.allowed));
+      } catch (err) {
+        console.error("Access check failed:", err);
+        setIsAllowedUser(false);
+      } finally {
+        setCheckingAccess(false);
+      }
+    };
+
+    checkAccess();
+  }, [session, userEmail]);
 
   const handleGenerateSpeech = async () => {
     setError("");
@@ -84,13 +108,17 @@ export default function Home() {
               로그인됨: {session.user?.email}
             </p>
 
-            {isAllowedUser ? (
+            {checkingAccess ? (
+              <p style={{ color: "#666", marginBottom: "12px" }}>
+                접근 권한 확인 중...
+              </p>
+            ) : isAllowedUser ? (
               <p style={{ color: "green", marginBottom: "12px" }}>
                 허용된 사용자입니다. 서비스를 이용할 수 있습니다.
               </p>
             ) : (
               <p style={{ color: "red", marginBottom: "12px" }}>
-                현재 계정은 허용 리스트에 등록되어 있지 않아 서비스 이용이 불가능합니다.
+                허용 리스트에 없는 계정입니다. 접근이 제한됩니다.
               </p>
             )}
 
@@ -131,7 +159,7 @@ export default function Home() {
         onChange={(e) => setText(e.target.value)}
         placeholder="여기에 더빙할 텍스트를 입력하세요."
         rows={8}
-        disabled={!session || !isAllowedUser}
+        disabled={!session || !isAllowedUser || checkingAccess}
         style={{
           width: "100%",
           padding: "16px",
@@ -139,20 +167,25 @@ export default function Home() {
           borderRadius: "8px",
           border: "1px solid #ccc",
           marginBottom: "16px",
-          backgroundColor: !session || !isAllowedUser ? "#f3f3f3" : "white",
+          backgroundColor:
+            !session || !isAllowedUser || checkingAccess ? "#f3f3f3" : "white",
         }}
       />
 
       <button
         onClick={handleGenerateSpeech}
-        disabled={loading || !session || !isAllowedUser}
+        disabled={loading || !session || !isAllowedUser || checkingAccess}
         style={{
           padding: "12px 20px",
           fontSize: "16px",
           borderRadius: "8px",
           border: "none",
-          cursor: loading || !session || !isAllowedUser ? "not-allowed" : "pointer",
-          opacity: loading || !session || !isAllowedUser ? 0.6 : 1,
+          cursor:
+            loading || !session || !isAllowedUser || checkingAccess
+              ? "not-allowed"
+              : "pointer",
+          opacity:
+            loading || !session || !isAllowedUser || checkingAccess ? 0.6 : 1,
         }}
       >
         {loading ? "생성 중..." : "음성 생성"}
