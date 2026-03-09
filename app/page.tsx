@@ -1,76 +1,100 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
 
 export default function Home() {
+  const [text, setText] = useState("");
+  const [audioUrl, setAudioUrl] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleGenerateSpeech = async () => {
+    setError("");
+    setAudioUrl("");
+  
+    if (!text.trim()) {
+      setError("텍스트를 입력해주세요.");
+      return;
+    }
+  
+    try {
+      setLoading(true);
+  
+      const response = await fetch("/api/tts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text }),
+      });
+  
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Server error response:", errorText);
+        throw new Error("음성 생성에 실패했습니다.");
+      }
+  
+      const audioBlob = await response.blob();
+      const url = URL.createObjectURL(audioBlob);
+      setAudioUrl(url);
+    } catch (err) {
+      console.error(err);
+      setError("음성 생성 중 오류가 발생했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <main style={{ padding: "40px" }}>
-      <h1>AI Dubbing Service</h1>
-      <p>Perso AI DevRel Assignment</p>
+    <main style={{ maxWidth: "720px", margin: "0 auto", padding: "40px" }}>
+      <h1 style={{ fontSize: "32px", fontWeight: "bold", marginBottom: "12px" }}>
+        AI Dubbing Service
+      </h1>
+      <p style={{ marginBottom: "24px" }}>
+        텍스트를 입력하면 ElevenLabs를 통해 음성을 생성합니다.
+      </p>
+
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="여기에 더빙할 텍스트를 입력하세요."
+        rows={8}
+        style={{
+          width: "100%",
+          padding: "16px",
+          fontSize: "16px",
+          borderRadius: "8px",
+          border: "1px solid #ccc",
+          marginBottom: "16px",
+        }}
+      />
+
+      <button
+        onClick={handleGenerateSpeech}
+        disabled={loading}
+        style={{
+          padding: "12px 20px",
+          fontSize: "16px",
+          borderRadius: "8px",
+          border: "none",
+          cursor: "pointer",
+        }}
+      >
+        {loading ? "생성 중..." : "음성 생성"}
+      </button>
+
+      {error && (
+        <p style={{ color: "red", marginTop: "16px" }}>
+          {error}
+        </p>
+      )}
+
+      {audioUrl && (
+        <div style={{ marginTop: "24px" }}>
+          <h2 style={{ marginBottom: "12px" }}>생성된 음성</h2>
+          <audio controls src={audioUrl} style={{ width: "100%" }} />
+        </div>
+      )}
     </main>
   );
 }
-
-/*
-export default function Home() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
-  );
-}
-*/
