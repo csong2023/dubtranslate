@@ -1,25 +1,49 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { signIn, signOut, useSession } from "next-auth/react";
+
+const WHITELIST = [
+  "kts123@estsoft.com",
+  "csong2023@gmail.com",
+];
 
 export default function Home() {
+  const { data: session, status } = useSession();
+
   const [text, setText] = useState("");
   const [audioUrl, setAudioUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const userEmail = session?.user?.email ?? "";
+
+  const isAllowedUser = useMemo(() => {
+    return WHITELIST.includes(userEmail);
+  }, [userEmail]);
+
   const handleGenerateSpeech = async () => {
     setError("");
     setAudioUrl("");
-  
+
+    if (!session) {
+      setError("먼저 로그인해주세요.");
+      return;
+    }
+
+    if (!isAllowedUser) {
+      setError("허용된 사용자만 이 서비스를 이용할 수 있습니다.");
+      return;
+    }
+
     if (!text.trim()) {
       setError("텍스트를 입력해주세요.");
       return;
     }
-  
+
     try {
       setLoading(true);
-  
+
       const response = await fetch("/api/tts", {
         method: "POST",
         headers: {
@@ -27,13 +51,13 @@ export default function Home() {
         },
         body: JSON.stringify({ text }),
       });
-  
+
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Server error response:", errorText);
         throw new Error("음성 생성에 실패했습니다.");
       }
-  
+
       const audioBlob = await response.blob();
       const url = URL.createObjectURL(audioBlob);
       setAudioUrl(url);
@@ -50,6 +74,54 @@ export default function Home() {
       <h1 style={{ fontSize: "32px", fontWeight: "bold", marginBottom: "12px" }}>
         AI Dubbing Service
       </h1>
+
+      <div style={{ marginBottom: "24px" }}>
+        {status === "loading" ? (
+          <p>로그인 상태 확인 중...</p>
+        ) : session ? (
+          <div>
+            <p style={{ marginBottom: "8px" }}>
+              로그인됨: {session.user?.email}
+            </p>
+
+            {isAllowedUser ? (
+              <p style={{ color: "green", marginBottom: "12px" }}>
+                허용된 사용자입니다. 서비스를 이용할 수 있습니다.
+              </p>
+            ) : (
+              <p style={{ color: "red", marginBottom: "12px" }}>
+                현재 계정은 허용 리스트에 등록되어 있지 않아 서비스 이용이 불가능합니다.
+              </p>
+            )}
+
+            <button
+              onClick={() => signOut()}
+              style={{
+                padding: "10px 16px",
+                borderRadius: "8px",
+                border: "none",
+                cursor: "pointer",
+                marginRight: "8px",
+              }}
+            >
+              로그아웃
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => signIn("google")}
+            style={{
+              padding: "10px 16px",
+              borderRadius: "8px",
+              border: "none",
+              cursor: "pointer",
+            }}
+          >
+            Google로 로그인
+          </button>
+        )}
+      </div>
+
       <p style={{ marginBottom: "24px" }}>
         텍스트를 입력하면 ElevenLabs를 통해 음성을 생성합니다.
       </p>
@@ -59,6 +131,7 @@ export default function Home() {
         onChange={(e) => setText(e.target.value)}
         placeholder="여기에 더빙할 텍스트를 입력하세요."
         rows={8}
+        disabled={!session || !isAllowedUser}
         style={{
           width: "100%",
           padding: "16px",
@@ -66,27 +139,27 @@ export default function Home() {
           borderRadius: "8px",
           border: "1px solid #ccc",
           marginBottom: "16px",
+          backgroundColor: !session || !isAllowedUser ? "#f3f3f3" : "white",
         }}
       />
 
       <button
         onClick={handleGenerateSpeech}
-        disabled={loading}
+        disabled={loading || !session || !isAllowedUser}
         style={{
           padding: "12px 20px",
           fontSize: "16px",
           borderRadius: "8px",
           border: "none",
-          cursor: "pointer",
+          cursor: loading || !session || !isAllowedUser ? "not-allowed" : "pointer",
+          opacity: loading || !session || !isAllowedUser ? 0.6 : 1,
         }}
       >
         {loading ? "생성 중..." : "음성 생성"}
       </button>
 
       {error && (
-        <p style={{ color: "red", marginTop: "16px" }}>
-          {error}
-        </p>
+        <p style={{ color: "red", marginTop: "16px" }}>{error}</p>
       )}
 
       {audioUrl && (
