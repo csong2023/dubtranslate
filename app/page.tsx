@@ -15,6 +15,8 @@ import {
   ShieldAlert,
 } from "lucide-react";
 
+const MAX_FILE_SIZE = 4.5 * 1024 * 1024;
+
 export default function Home() {
   const { data: session, status } = useSession();
 
@@ -23,33 +25,155 @@ export default function Home() {
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [resultType, setResultType] = useState<"audio" | "video" | null>(null);
   const [loading, setLoading] = useState(false);
-
   const [accessLoading, setAccessLoading] = useState(false);
   const [isAllowed, setIsAllowed] = useState<boolean | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     async function checkAccess() {
       if (!session?.user?.email) return;
-
       setAccessLoading(true);
-
       try {
         const res = await fetch("/api/check-access");
         const data = await res.json();
-
         setIsAllowed(Boolean(data.allowed));
-      } catch (error) {
-        console.error("access check error:", error);
+      } catch {
         setIsAllowed(false);
       } finally {
         setAccessLoading(false);
       }
     }
 
-    if (session) {
-      checkAccess();
-    }
+    if (session) checkAccess();
   }, [session]);
+
+  useEffect(() => {
+    return () => {
+      if (resultUrl) URL.revokeObjectURL(resultUrl);
+    };
+  }, [resultUrl]);
+
+  function validateFile(selectedFile: File) {
+    if (selectedFile.size > MAX_FILE_SIZE) {
+      return "File must be 4.5MB or smaller.";
+    }
+    return "";
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const selectedFile = e.target.files?.[0];
+    if (!selectedFile) return;
+
+    const errorMessage = validateFile(selectedFile);
+    if (errorMessage) {
+      setFile(null);
+      setError(errorMessage);
+      e.target.value = "";
+      return;
+    }
+
+    setFile(selectedFile);
+    setError("");
+  }
+
+  async function handleGenerate() {
+    if (!file) {
+      alert("Upload a file first");
+      return;
+    }
+
+    const errorMessage = validateFile(file);
+    if (errorMessage) {
+      setError(errorMessage);
+      alert(errorMessage);
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    if (resultUrl) {
+      URL.revokeObjectURL(resultUrl);
+      setResultUrl(null);
+    }
+    setResultType(null);
+
+    try {
+      const transcribeForm = new FormData();
+      transcribeForm.append("file", file);
+
+      const transcribeRes = await fetch("/api/transcribe", {
+        method: "POST",
+        body: transcribeForm,
+      });
+
+      if (!transcribeRes.ok) {
+        alert(`Transcribe failed (${transcribeRes.status})`);
+        return;
+      }
+
+      const transcribeData = await transcribeRes.json();
+      const text = transcribeData.text?.trim();
+
+      if (!text) {
+        alert("Transcription returned empty text");
+        return;
+      }
+
+      const translateRes = await fetch("/api/translate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text,
+          targetLang,
+        }),
+      });
+
+      if (!translateRes.ok) {
+        alert(`Translate failed (${translateRes.status})`);
+        return;
+      }
+
+      const translateData = await translateRes.json();
+      const translated = translateData.translatedText?.trim();
+
+      if (!translated) {
+        alert("Translation returned empty text");
+        return;
+      }
+
+      const dubForm = new FormData();
+      dubForm.append("file", file);
+      dubForm.append("text", translated);
+
+      const dubRes = await fetch("/api/dub", {
+        method: "POST",
+        body: dubForm,
+      });
+
+      if (!dubRes.ok) {
+        alert(`Dub generation failed (${dubRes.status})`);
+        return;
+      }
+
+      const outputBlob = await dubRes.blob();
+
+      if (!outputBlob.size) {
+        alert("Dub returned empty result");
+        return;
+      }
+
+      const url = URL.createObjectURL(outputBlob);
+      setResultUrl(url);
+      setResultType(file.type.startsWith("video/") ? "video" : "audio");
+    } catch {
+      alert("Error generating dub");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   if (status === "loading") {
     return (
@@ -91,7 +215,7 @@ export default function Home() {
                   Login with Google
                 </button>
                 <div className="rounded-2xl border border-white/10 bg-white/5 px-6 py-3 text-sm text-zinc-300">
-                  Fast upload · Translation · Dub generation
+                  Max file size: 4.5MB
                 </div>
               </div>
             </div>
@@ -156,7 +280,8 @@ export default function Home() {
           <h1 className="text-3xl font-bold tracking-tight">Access Denied</h1>
 
           <p className="mt-3 text-zinc-400">
-            Your account is signed in, but this email is not on the allowed user list.
+            Your account is signed in, but this email is not on the allowed user
+            list.
           </p>
 
           <div className="mt-5 rounded-2xl border border-white/10 bg-zinc-900/70 p-4 text-sm text-zinc-300">
@@ -178,129 +303,6 @@ export default function Home() {
         </div>
       </main>
     );
-  }
-
-  async function handleGenerate() {
-    if (!file) {
-      alert("Upload a file first");
-      return;
-    }
-
-    setLoading(true);
-    setResultUrl(null);
-    setResultType(null);
-
-    try {
-      const form = new FormData();
-      form.append("file", file);
-
-      const transcribeRes = await fetch("/api/transcribe", {
-        method: "POST",
-        body: form,
-      });
-
-      if (!transcribeRes.ok) {
-        const errorText = await transcribeRes.text();
-        console.error("transcribe error:", errorText);
-        alert("Transcribe failed");
-        setLoading(false);
-        return;
-      }
-
-      const transcribeTextRaw = await transcribeRes.text();
-
-      let transcribeData: any;
-      try {
-        transcribeData = JSON.parse(transcribeTextRaw);
-      } catch {
-        alert("Transcribe returned non-JSON response");
-        setLoading(false);
-        return;
-      }
-
-      const text = transcribeData.text?.trim();
-
-      if (!text) {
-        alert("Transcription returned empty text");
-        setLoading(false);
-        return;
-      }
-
-      const translateRes = await fetch("/api/translate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text,
-          targetLang,
-        }),
-      });
-
-      if (!translateRes.ok) {
-        const errorText = await translateRes.text();
-        console.error("translate error:", errorText);
-        alert("Translate failed");
-        setLoading(false);
-        return;
-      }
-
-      const translateTextRaw = await translateRes.text();
-
-      let translateData: any;
-      try {
-        translateData = JSON.parse(translateTextRaw);
-      } catch {
-        alert("Translate returned non-JSON response");
-        setLoading(false);
-        return;
-      }
-
-      const translated = translateData.translatedText?.trim();
-
-      if (!translated) {
-        console.error("translateData:", translateData);
-        alert("Translation returned empty text");
-        setLoading(false);
-        return;
-      }
-
-      const dubForm = new FormData();
-      dubForm.append("file", file);
-      dubForm.append("text", translated);
-
-      const dubRes = await fetch("/api/dub", {
-        method: "POST",
-        body: dubForm,
-      });
-
-      if (!dubRes.ok) {
-        const dubError = await dubRes.text();
-        console.error("dub raw error:", dubError);
-        alert("Dub generation failed");
-        setLoading(false);
-        return;
-      }
-
-      const blob = await dubRes.blob();
-
-      if (blob.size === 0) {
-        alert("Dub returned empty result");
-        setLoading(false);
-        return;
-      }
-
-      const url = URL.createObjectURL(blob);
-      const isVideoFile = file.type.startsWith("video/");
-
-      setResultUrl(url);
-      setResultType(isVideoFile ? "video" : "audio");
-    } catch (err) {
-      console.error(err);
-      alert("Error generating dub");
-    } finally {
-      setLoading(false);
-    }
   }
 
   return (
@@ -343,8 +345,7 @@ export default function Home() {
             <div className="mb-6">
               <h2 className="text-xl font-semibold">Upload your media</h2>
               <p className="mt-1 text-sm text-zinc-400">
-                Supports audio and video files for transcription, translation,
-                and dubbing.
+                Supports audio and video files up to 4.5MB.
               </p>
             </div>
 
@@ -356,17 +357,22 @@ export default function Home() {
               <span className="mt-2 text-sm text-zinc-400">
                 MP3, WAV, MP4, MOV and more
               </span>
+              <span className="mt-1 text-xs text-zinc-500">
+                Maximum file size: 4.5MB
+              </span>
               <input
                 type="file"
                 accept="audio/*,video/*"
                 className="hidden"
-                onChange={(e) => {
-                  if (e.target.files?.[0]) {
-                    setFile(e.target.files[0]);
-                  }
-                }}
+                onChange={handleFileChange}
               />
             </label>
+
+            {error && (
+              <div className="mt-4 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                {error}
+              </div>
+            )}
 
             {file && (
               <div className="mt-5 flex items-center gap-3 rounded-2xl border border-white/10 bg-zinc-900/70 p-4">
@@ -378,8 +384,7 @@ export default function Home() {
                 <div className="min-w-0">
                   <p className="truncate font-medium">{file.name}</p>
                   <p className="text-sm text-zinc-400">
-                    {(file.size / 1024 / 1024).toFixed(2)} MB ·{" "}
-                    {file.type || "Unknown type"}
+                    {(file.size / 1024 / 1024).toFixed(2)} MB · {file.type || "Unknown type"}
                   </p>
                 </div>
               </div>
@@ -408,7 +413,7 @@ export default function Home() {
               <div className="flex items-end">
                 <button
                   onClick={handleGenerate}
-                  disabled={loading}
+                  disabled={loading || !file}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3 font-medium text-black transition hover:scale-[1.01] hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {loading ? (
@@ -444,12 +449,9 @@ export default function Home() {
             {!resultUrl && (
               <div className="flex min-h-[360px] flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 bg-zinc-900/60 text-center">
                 <PlayCircle className="mb-4 h-12 w-12 text-zinc-500" />
-                <p className="text-lg font-medium text-zinc-300">
-                  No generated result yet
-                </p>
+                <p className="text-lg font-medium text-zinc-300">No generated result yet</p>
                 <p className="mt-2 max-w-sm text-sm text-zinc-500">
-                  Upload a file, choose a language, and run dub generation to
-                  preview the output here.
+                  Upload a file, choose a language, and run dub generation to preview the output here.
                 </p>
               </div>
             )}
@@ -460,9 +462,7 @@ export default function Home() {
                   <FileAudio className="h-5 w-5 text-cyan-300" />
                   <h3 className="font-semibold">Dubbed Audio</h3>
                 </div>
-
                 <audio controls src={resultUrl} className="w-full" />
-
                 <a
                   href={resultUrl}
                   download="dubbed-audio.mp3"
@@ -480,13 +480,11 @@ export default function Home() {
                   <FileVideo className="h-5 w-5 text-cyan-300" />
                   <h3 className="font-semibold">Dubbed Video</h3>
                 </div>
-
                 <video
                   controls
                   src={resultUrl}
                   className="w-full rounded-2xl border border-white/10"
                 />
-
                 <a
                   href={resultUrl}
                   download="dubbed-video.mp4"

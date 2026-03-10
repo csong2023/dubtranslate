@@ -11,6 +11,7 @@ import { isAllowedEmail } from "../../lib/allowed-users";
 export const runtime = "nodejs";
 
 const execFileAsync = promisify(execFile);
+const MAX_FILE_SIZE = 4.5 * 1024 * 1024;
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -22,36 +23,60 @@ export async function POST(req: Request) {
   let outputPath = "";
 
   try {
-    const formData = await req.formData();
-    const file = formData.get("file") as File | null;
-    const text = formData.get("text") as string | null;
+    const session = await auth();
+    const email = session?.user?.email;
 
-    if (!file) {
+    if (!email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const allowed = await isAllowedEmail(email);
+    if (!allowed) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const formData = await req.formData();
+    const file = formData.get("file");
+    const text = formData.get("text");
+
+    if (!(file instanceof File)) {
       return NextResponse.json({ error: "Missing file" }, { status: 400 });
     }
 
-    if (!text || !text.trim()) {
+    if (typeof text !== "string" || !text.trim()) {
       return NextResponse.json({ error: "Missing text" }, { status: 400 });
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: "File must be 4.5MB or smaller." },
+        { status: 400 }
+      );
+    }
+
+    const mimeType = file.type || "application/octet-stream";
+    const isVideo = mimeType.startsWith("video/");
+    const isAudio = mimeType.startsWith("audio/");
+
+    if (!isVideo && !isAudio) {
+      return NextResponse.json(
+        { error: "Only audio and video files are supported." },
+        { status: 400 }
+      );
     }
 
     const tempDir = path.join(os.tmpdir(), `dub-${Date.now()}`);
     await mkdir(tempDir, { recursive: true });
 
-    const originalName = file.name || "input";
-    const ext = path.extname(originalName) || (file.type.startsWith("video/") ? ".mp4" : ".mp3");
+    const ext = path.extname(file.name || "") || (isVideo ? ".mp4" : ".mp3");
 
     inputPath = path.join(tempDir, `input${ext}`);
     ttsPath = path.join(tempDir, "tts.mp3");
-    outputPath = path.join(
-      tempDir,
-      file.type.startsWith("video/") ? "output.mp4" : "output.mp3"
-    );
+    outputPath = path.join(tempDir, isVideo ? "output.mp4" : "output.mp3");
 
-    // save uploaded file
     const inputBuffer = Buffer.from(await file.arrayBuffer());
     await writeFile(inputPath, inputBuffer);
 
-    // generate TTS
     const ttsResponse = await openai.audio.speech.create({
       model: "gpt-4o-mini-tts",
       voice: "alloy",
@@ -61,8 +86,7 @@ export async function POST(req: Request) {
     const ttsBuffer = Buffer.from(await ttsResponse.arrayBuffer());
     await writeFile(ttsPath, ttsBuffer);
 
-    // if input is video -> return mp4 with dubbed audio
-    if (file.type.startsWith("video/")) {
+    if (isVideo) {
       await execFileAsync("ffmpeg", [
         "-y",
         "-i",
@@ -92,7 +116,6 @@ export async function POST(req: Request) {
       });
     }
 
-    // if input is audio -> just return generated dubbed audio
     const out = await readFile(ttsPath);
 
     return new Response(out, {
@@ -102,12 +125,7 @@ export async function POST(req: Request) {
         "Content-Disposition": 'attachment; filename="dubbed-audio.mp3"',
       },
     });
-  } catch (error: any) {
-    console.error("dub error:", error);
-    if (error?.stderr) {
-      console.error("ffmpeg stderr:", error.stderr);
-    }
-
+  } catch {
     return NextResponse.json({ error: "Dub generation failed" }, { status: 500 });
   } finally {
     for (const filePath of [inputPath, ttsPath, outputPath]) {

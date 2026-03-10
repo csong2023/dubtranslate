@@ -1,49 +1,53 @@
-import { NextRequest } from "next/server";
+import OpenAI from "openai";
+import { NextResponse } from "next/server";
+import { auth } from "@/auth";
+import { isAllowedEmail } from "../../lib/allowed-users";
 
-export async function POST(req: NextRequest) {
+export const runtime = "nodejs";
+
+const MAX_FILE_SIZE = 4.5 * 1024 * 1024;
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+export async function POST(req: Request) {
   try {
-    const formData = await req.formData();
-    const file = formData.get("file") as File | null;
+    const session = await auth();
+    const email = session?.user?.email;
 
-    if (!file) {
-      return Response.json(
-        { error: "No file uploaded" },
+    if (!email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const allowed = await isAllowedEmail(email);
+    if (!allowed) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const formData = await req.formData();
+    const file = formData.get("file");
+
+    if (!(file instanceof File)) {
+      return NextResponse.json({ error: "Missing file" }, { status: 400 });
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: "File must be 4.5MB or smaller." },
         { status: 400 }
       );
     }
 
-    const elevenForm = new FormData();
-
-    elevenForm.append("file", file);
-
-    // ⭐ 반드시 필요
-    elevenForm.append("model_id", "scribe_v1");
-
-    const response = await fetch(
-      "https://api.elevenlabs.io/v1/speech-to-text",
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": process.env.ELEVENLABS_API_KEY!,
-        },
-        body: elevenForm,
-      }
-    );
-
-    const data = await response.json();
-
-
-    return Response.json({
-      text: data.text ?? "",
-      raw: data,
+    const transcription = await openai.audio.transcriptions.create({
+      file,
+      model: "gpt-4o-mini-transcribe",
     });
 
-  } catch (error) {
-    console.error("transcribe route error:", error);
-
-    return Response.json(
-      { error: "transcription failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      text: transcription.text,
+    });
+  } catch {
+    return NextResponse.json({ error: "Transcription failed" }, { status: 500 });
   }
 }
