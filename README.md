@@ -1,10 +1,16 @@
-# 🎬 DubTranslate
+# 🎬 DubTranslate: Real-time translation for both Audio and Video
 
 An a web application that allows real-time translation of an audio/video file into four different languages (kor, eng, spn, jpn), where users can retrieve a dubbed version of their original file.
 
 Users can upload **audio or video**, select a target language, and receive an automatically generated **dubbed output**.
 
 This project demonstrates a **complete AI media pipeline** built using modern web technologies.
+
+DubTranslate는 오디오 및 비디오 파일을 자동으로 번역하고 더빙까지 생성하는 AI 기반 미디어 파이프라인 웹 애플리케이션입니다.
+
+사용자는 미디어 파일을 업로드하고 원하는 언어를 선택하면, 음성 인식 → 번역 → AI 음성 생성 → 더빙된 결과물 생성의 과정을 자동으로 수행하여 새로운 언어의 콘텐츠를 빠르게 얻을 수 있습니다.
+
+Project Link: **https://dubtranslate.vercel.app/**
 
 ---
 
@@ -53,43 +59,6 @@ D --> E[Video + Audio Merge]
 E --> F[Dubbed Media Output]
 ```
 
-# 🏗 Architecture
-
-Frontend (Next.js)
-│
-├── File Upload
-├── Language Selection
-└── UI Playback
-
-↓
-
-Backend (Next.js API Routes)
-│
-├── /api/transcribe
-├── /api/translate
-└── /api/dub
-
-↓
-
-External AI Services
-│
-├── Speech-to-Text
-├── Translation
-└── Text-to-Speech
-
-↓
-
-Media Processing
-│
-└── FFmpeg
-
-↓
-
-Final Output
-│
-└── Dubbed Audio / Dubbed Video
-
-
 ---
 
 # 🛠 Tech Stack
@@ -123,76 +92,58 @@ Final Output
 
 ---
 
-# 📂 Project Structure
+## 📂 Project Structure
 
-app
-├── api
-│ ├── auth
-│ │
-│ ├── transcribe
-│ │ └── route.ts
-│ │
-│ ├── translate
-│ │ └── route.ts
-│ │
-│ ├── dub
-│ │ └── route.ts
+```
+app/
+├─ api/
+│  ├─ auth/
+│  ├─ transcribe/
+│  │  └─ route.ts
+│  ├─ translate/
+│  │  └─ route.ts
+│  └─ dub/
+│     └─ route.ts
 │
-├── page.tsx
-├── layout.tsx
-└── providers.tsx
+├─ page.tsx
+├─ layout.tsx
+└─ providers.tsx
 
-lib
-├── allowed-users.ts
-└── db.ts
-
+lib/
+├─ allowed-users.ts
+└─ db.ts
+```
 
 ---
 
 # ⚙️ Installation
 
+```
 ## 1. Clone the repository
-git clone https://github.com/YOUR_USERNAME/ai-dubbing-service.git
-
-cd ai-dubbing-service
-
-
----
+`git clone https://github.com/YOUR_USERNAME/ai-dubbing-service.git`
+`cd ai-dubbing-service`
 
 ## 2. Install dependencies
+`npm install`
+`npm install lucide-react`
 
-
-npm install
-npm install lucide-react
-
----
 
 ## 3. Install FFmpeg
-
-Mac:
-
-brew install ffmpeg
-
-
-Verify installation:
-
-
-ffmpeg -version
-
-
----
+Mac: `brew install ffmpeg`
+```
 
 # 🔑 Environment Variables
 
 Create a `.env.local` file in the root directory.
 
+```
+`OPENAI_API_KEY=your_openai_api_key`
 
-OPENAI_API_KEY=your_openai_api_key
+`NEXTAUTH_SECRET=your_secret`
 
-NEXTAUTH_SECRET=your_secret
-
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
+`GOOGLE_CLIENT_ID=your_google_client_id`
+`GOOGLE_CLIENT_SECRET=your_google_client_secret`
+```
 
 ---
 
@@ -201,13 +152,13 @@ GOOGLE_CLIENT_SECRET=your_google_client_secret
 Start the development server:
 
 
-npm run dev
+`npm run dev`
 
 
 Open the application:
 
 
-http://localhost:3000
+`http://localhost:3000`
 
 
 ---
@@ -221,28 +172,10 @@ http://localhost:3000
 
 The system will process the media and return a dubbed result.
 
----
-
-# 📦 Output Behavior
-
 | Input | Output |
 |------|------|
 Audio | Dubbed audio file |
 Video | Dubbed MP4 video |
-
----
-
-# 🔬 Example Use Cases
-
-• Content localization
-
-• Educational video translation
-
-• Podcast dubbing
-
-• Media accessibility
-
-• International communication
 
 ---
 
@@ -267,11 +200,5 @@ Potential future features:
 # 👨‍💻 Author
 
 Chris Yunho Song  
-Carnegie Mellon University  
-Information Systems + Computer Science
-
----
-
-# ⭐ Acknowledgements
-
-This project utilizes modern AI tools and open-source media processing technologies to demonstrate automated media localization workflows.
+Carnegie Mellon University 28'
+Major: Computer Science and Information Systems
